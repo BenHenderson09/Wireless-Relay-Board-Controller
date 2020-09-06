@@ -12,12 +12,23 @@ const int intervalBetweenPacketSendsInMilliseconds{1000};
 unsigned long timeWhenPacketSentInMilliseconds{0};
 int packetsSentCounter{0};
 
+long int timeWhenFirstButtonPressedInMilliseconds{0};
+long int timeWhenSecondButtonPressedInMilliseconds{0};
+int previousStateOfFirstButton{LOW};
+int previousStateOfSecondButton{LOW};
+
+uint8_t message;
+bool isFirstRelayTurnedOn{false};
+bool isSecondRelayTurnedOn{false};
+
 void setup() {
   setupPacketIndicators();
   setupLoRa();
 
   pinMode(PB10, OUTPUT);
   pinMode(PB11, OUTPUT);
+  pinMode(PA0, INPUT);
+  pinMode(PA2, INPUT);
 }
 
 void loop() {
@@ -35,6 +46,22 @@ void loop() {
     timeWhenPacketReceivedInMilliseconds = millis();
   }
 
+  int firstButtonState{digitalRead(PA0)};
+  int secondButtonState{digitalRead(PA2)};
+  
+  if (firstButtonState == HIGH && previousStateOfFirstButton == LOW && millis() - timeWhenFirstButtonPressedInMilliseconds >= 500){
+    timeWhenFirstButtonPressedInMilliseconds = millis();
+    isFirstRelayTurnedOn = !isFirstRelayTurnedOn;
+  }
+
+  if (secondButtonState == HIGH && previousStateOfSecondButton == LOW && millis() - timeWhenSecondButtonPressedInMilliseconds >= 500){
+    timeWhenSecondButtonPressedInMilliseconds = millis();
+    isSecondRelayTurnedOn = !isSecondRelayTurnedOn;
+  }
+
+  previousStateOfFirstButton = firstButtonState;
+  previousStateOfSecondButton = secondButtonState;
+
   handlePacketIndicators();
 }
 
@@ -47,12 +74,7 @@ void setupLoRa() {
   if (!LoRa.begin(frequency)) {
     while (1);
   }
-  
-  //LoRa.onTxDone(onTxDone);
-}
 
-void onTxDone() {
-  digitalWrite(packetSentIndicatorPin, LOW);
 }
 
 bool isAPacketDueToBeSent(){
@@ -113,12 +135,12 @@ int calculatePacketSentIndicatorState(){
 }
 
 void sendPacket(){
+  message = (isFirstRelayTurnedOn << 1) | isSecondRelayTurnedOn;
   digitalWrite(packetSentIndicatorPin, HIGH);
   timeWhenPacketSentInMilliseconds = millis();
   
   LoRa.beginPacket();
-  LoRa.print("Counter from Arduino: ");
-  LoRa.print(packetsSentCounter);
+  LoRa.write(message);
   LoRa.endPacket(true);
 
   digitalWrite(packetSentIndicatorPin, LOW);
