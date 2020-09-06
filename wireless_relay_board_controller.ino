@@ -1,149 +1,65 @@
-#include "LoRa_STM32.hpp"
+#include "src/Radio/Radio.hpp"
+#include "src/BlinkableLED/BlinkableLED.hpp"
+#include "src/SolidLED/SolidLED.hpp"
+#include "src/ToggleButton/ToggleButton.hpp"
 
-const int packetReceivedIndicatorPin{PB0};
-int packetReceivedIndicatorState{LOW};
-const int lengthOfIndicatorBlinkInMilliseconds{100};
-const long frequency{433E6};
-long int timeWhenPacketReceivedInMilliseconds{0};
+// Radio
+Radio radio;
 
-const int packetSentIndicatorPin{PC15};
-int packetSentIndicatorState{LOW};
-const int intervalBetweenPacketSendsInMilliseconds{1000};
-unsigned long timeWhenPacketSentInMilliseconds{0};
-int packetsSentCounter{0};
+// LEDs
+const int txLEDPin{PC15};
+const int rxLEDPin{PB0};
+const int firstRelayLEDPin{PB10};
+const int secondRelayLEDPin{PB11};
 
-long int timeWhenFirstButtonPressedInMilliseconds{0};
-long int timeWhenSecondButtonPressedInMilliseconds{0};
-int previousStateOfFirstButton{LOW};
-int previousStateOfSecondButton{LOW};
+BlinkableLED rxLED{rxLEDPin};
+BlinkableLED txLED{txLEDPin};
+SolidLED firstRelayLED{firstRelayLEDPin};
+SolidLED secondRelayLED{secondRelayLEDPin};
 
-uint8_t message;
+// Relays
 bool isFirstRelayTurnedOn{false};
 bool isSecondRelayTurnedOn{false};
 
-void setup() {
-  setupPacketIndicators();
-  setupLoRa();
+// Buttons
+const int firstButtonPin{PA0};
+const int secondButtonPin{PA2};
 
-  pinMode(PB10, OUTPUT);
-  pinMode(PB11, OUTPUT);
-  pinMode(PA0, INPUT);
-  pinMode(PA2, INPUT);
+ToggleButton firstButton{firstButtonPin, isFirstRelayTurnedOn};
+ToggleButton secondButton{secondButtonPin, isSecondRelayTurnedOn};
+
+void setup() {
+  radio.init();
 }
 
 void loop() {
-  if (isAPacketDueToBeSent()) {
-    sendPacket();
+  int initialRelayStates{serializeRelayStates()};
+
+  radio.receiveByte(&receiveByteCallback);
+  firstButton.updateState();
+  secondButton.updateState();
+  txLED.updateState();
+  rxLED.updateState();
+
+  int updatedRelayStates{serializeRelayStates()};
+
+  if (updatedRelayStates != initialRelayStates){
+    radio.sendByte(updatedRelayStates);
+    txLED.blink();
   }
+}
+
+uint8_t serializeRelayStates(){
+  // Bit 0 represents the state of the second relay, bit 1 represents the state of the first relay.
+  return (isFirstRelayTurnedOn << 1) | isSecondRelayTurnedOn;
+}
+
+void receiveByteCallback(uint8_t byte){
+  bool isFirstRelayTurnedOn{byte & (1 << 1)};
+  bool isSecondRelayTurnedOn{byte & 1};
   
-  if (LoRa.parsePacket()) {
-    int packet{LoRa.read()};
-    bool isFirstRelayTurnedOn{packet & (1 << 1)};
-    bool isSecondRelayTurnedOn{packet & 1};
-    
-    if (isFirstRelayTurnedOn){digitalWrite(PB10, HIGH);}else{digitalWrite(PB10, LOW);}
-    if (isSecondRelayTurnedOn){digitalWrite(PB11, HIGH);}else{digitalWrite(PB11, LOW);}
-    timeWhenPacketReceivedInMilliseconds = millis();
-  }
+  isFirstRelayTurnedOn ? firstRelayLED.turnOn() : firstRelayLED.turnOff();
+  isSecondRelayTurnedOn ? secondRelayLED.turnOn() : secondRelayLED.turnOff();
 
-  int firstButtonState{digitalRead(PA0)};
-  int secondButtonState{digitalRead(PA2)};
-  
-  if (firstButtonState == HIGH && previousStateOfFirstButton == LOW && millis() - timeWhenFirstButtonPressedInMilliseconds >= 500){
-    timeWhenFirstButtonPressedInMilliseconds = millis();
-    isFirstRelayTurnedOn = !isFirstRelayTurnedOn;
-  }
-
-  if (secondButtonState == HIGH && previousStateOfSecondButton == LOW && millis() - timeWhenSecondButtonPressedInMilliseconds >= 500){
-    timeWhenSecondButtonPressedInMilliseconds = millis();
-    isSecondRelayTurnedOn = !isSecondRelayTurnedOn;
-  }
-
-  previousStateOfFirstButton = firstButtonState;
-  previousStateOfSecondButton = secondButtonState;
-
-  handlePacketIndicators();
-}
-
-void setupPacketIndicators(){
-  pinMode(packetSentIndicatorPin, OUTPUT);
-  pinMode(packetReceivedIndicatorPin, OUTPUT);
-}
-
-void setupLoRa() {
-  if (!LoRa.begin(frequency)) {
-    while (1);
-  }
-
-}
-
-bool isAPacketDueToBeSent(){
-  return millis() - timeWhenPacketSentInMilliseconds >= intervalBetweenPacketSendsInMilliseconds;
-}
-
-void handlePacketIndicators(){
-  handlePacketReceivedIndicator();
-  handlePacketSentIndicator();  
-}
-
-void handlePacketReceivedIndicator() {
-  int newPacketReceivedIndicatorState{calculatePacketReceivedIndicatorState()};
-
-  if (newPacketReceivedIndicatorState != packetReceivedIndicatorState){
-    packetReceivedIndicatorState = newPacketReceivedIndicatorState;
-    digitalWrite(packetReceivedIndicatorPin, packetReceivedIndicatorState);
-  }
-}
-
-void handlePacketSentIndicator() {
-  int newPacketSentIndicatorState{calculatePacketSentIndicatorState()};
-
-  if (newPacketSentIndicatorState != packetSentIndicatorState){
-    packetSentIndicatorState = newPacketSentIndicatorState;
-    digitalWrite(packetSentIndicatorPin, packetSentIndicatorState);
-  }
-}
-
-int calculatePacketReceivedIndicatorState(){
-  bool hasBlinkFinished {
-    millis() - timeWhenPacketReceivedInMilliseconds >= lengthOfIndicatorBlinkInMilliseconds
-  };
-
-  int newPacketReceivedIndicatorState;
-
-  if (hasBlinkFinished) {
-    return LOW;
-  }
-  else {
-    return HIGH;
-  }
-}
-
-int calculatePacketSentIndicatorState(){
-  bool hasBlinkFinished {
-    millis() - timeWhenPacketSentInMilliseconds >= lengthOfIndicatorBlinkInMilliseconds
-  };
-
-  int newPacketSentIndicatorState;
-
-  if (hasBlinkFinished) {
-    return LOW;
-  }
-  else {
-    return HIGH;
-  }
-}
-
-void sendPacket(){
-  message = (isFirstRelayTurnedOn << 1) | isSecondRelayTurnedOn;
-  digitalWrite(packetSentIndicatorPin, HIGH);
-  timeWhenPacketSentInMilliseconds = millis();
-  
-  LoRa.beginPacket();
-  LoRa.write(message);
-  LoRa.endPacket(true);
-
-  digitalWrite(packetSentIndicatorPin, LOW);
-
-  packetsSentCounter++;
+  rxLED.blink();
 }
