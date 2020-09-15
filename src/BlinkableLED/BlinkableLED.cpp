@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "../../constants/BlinkableLEDConstants.hpp"
 #include "BlinkableLED.hpp"
 
 BlinkableLED::BlinkableLED(int pin) : pin{pin}{
@@ -24,7 +25,8 @@ bool BlinkableLED::hasBlinkFinished(){
     millis() - timeWhenBlinkStartedInMilliseconds
   };
 
-  return millisecondsElapsedSinceBlinkStarted >= lengthOfBlinkInMilliseconds;
+  return millisecondsElapsedSinceBlinkStarted >=
+    BlinkableLEDConstants::lengthOfBlinkInMilliseconds;
 }
 
 void BlinkableLED::turnOn(){

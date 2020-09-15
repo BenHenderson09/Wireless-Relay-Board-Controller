@@ -1,8 +1,10 @@
 #include "../LoRa_STM32/LoRa_STM32.hpp"
+#include "../../constants/RadioConstants.hpp"
 #include "Radio.hpp"
 
+
 void Radio::init(){
-    if (!LoRa.begin(radioFrequency)) {
+    if (!LoRa.begin(RadioConstants::radioFrequency)) {
         while (1);
     }
 

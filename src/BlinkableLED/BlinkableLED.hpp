@@ -9,7 +9,6 @@ class BlinkableLED {
     void updateState();
 
   private:
-    const int lengthOfBlinkInMilliseconds{100};
     const int pin;
     bool state{LOW};
     unsigned long timeWhenBlinkStartedInMilliseconds;
