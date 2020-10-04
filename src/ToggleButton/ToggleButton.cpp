@@ -10,7 +10,8 @@ void ToggleButton::updateState(){
     int previousState = state;
     state = digitalRead(pin);
 
-    if (state == HIGH && previousState == LOW && millis() - timeWhenPressedInMilliseconds >= 500){
+    // 300ms interval is for debouncing
+    if (state == HIGH && previousState == LOW && millis() - timeWhenPressedInMilliseconds >= 300){
         timeWhenPressedInMilliseconds = millis();
         boolToToggle = !boolToToggle;
     }
